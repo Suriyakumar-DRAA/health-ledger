@@ -1,77 +1,97 @@
-import { RequestHandler, NextFunction, Response } from 'express';
-import { StatusCodes } from 'http-status-codes';
-import { keycloakService } from '@config/keycloak';
-import { permissionsClient } from '@config/permission';
-import { ResponseBuilder } from '@utils/response';
-import { logger } from '@utils/logger';
-import { AuthenticatedRequest } from '@customTypes/index';
+import { Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import jwksClient from 'jwks-rsa';
+import { env } from '../config/env';
+import { AppError } from '../utils/AppError';
+import { AuthenticatedRequest, JwtPayload } from '../types';
+import logger from '../utils/logger';
 
-// ─────────────────────────────────────────────
-//  AUTHENTICATION MIDDLEWARE
-//
-//  Responsibility split:
-//    ① Keycloak  →  Verify JWT identity (who you are)
-//    ② AuthZ API →  Resolve permissions  (what you can do)
-//
-//  Both steps are required before any protected route runs.
-//  Permissions are fetched ONCE and cached in Redis for
-//  `AUTHZ_PERMISSIONS_TTL_SEC` seconds, keeping latency low.
-// ─────────────────────────────────────────────
+const client = jwksClient({
+  jwksUri: env.auth.jwksUri,
+  cache: true,
+  cacheMaxEntries: 5,
+  cacheMaxAge: 10 * 60 * 1000, // 10 minutes
+  rateLimit: true,
+});
 
-export const authenticate: RequestHandler = async (
+async function getSigningKey(kid: string): Promise<string> {
+  const key = await client.getSigningKey(kid);
+  return key.getPublicKey();
+}
+
+export async function authMiddleware(
   req: AuthenticatedRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction,
-): Promise<void> => {
-  // ── Step 1: Extract Bearer token ──
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    ResponseBuilder.unauthorized(res, 'Authorization header missing or malformed');
-    return;
-  }
-
-  const token = authHeader.substring(7);
-
+): Promise<void> {
   try {
-    // ── Step 2: Verify JWT with Keycloak (identity) ──
-    const user = await keycloakService.verifyToken(token);
-    req.user   = user;
+    const authHeader = req.headers['authorization'];
 
-    // ── Step 3: Resolve permissions from external AuthZ API ──
-    //    Cache-first: Redis hit ≈ <5ms, API call ≈ <50ms
-    const permissions  = await permissionsClient.resolve(user.sub);
-    req.permissions    = permissions;
+    if (!authHeader) {
+      throw AppError.unauthorized('Missing Authorization header');
+    }
+
+    if (!authHeader?.startsWith('Bearer ')) {
+      throw AppError.unauthorized('Authorization header is not valid');
+    }
+
+    const token = authHeader.slice(7);
+
+    // Decode header to get kid without verification (needed to fetch signing key)
+    const decoded = jwt.decode(token, { complete: true });
+
+    if (!decoded || typeof decoded === 'string') {
+      throw AppError.unauthorized('Invalid token format');
+    }
+
+    const kid = decoded.header.kid;
+    if (!kid) {
+      throw AppError.unauthorized('Token missing key ID (kid)');
+    }
+
+    const signingKey = await getSigningKey(kid);
+
+    const payload = jwt.verify(token, signingKey, {
+      algorithms: env.auth.algorithms as jwt.Algorithm[],
+      issuer: env.auth.issuer,
+    }) as JwtPayload;
+
+    req.user = payload;
+
+    logger.info('[Auth] User authenticated successfully');
+    next();
+  } catch (error) {
+    if (error instanceof AppError) {
+      next(error);
+      return;
+    }
+
+    if (error instanceof jwt.TokenExpiredError) {
+      next(AppError.unauthorized('Token has expired'));
+      return;
+    }
+
+    if (error instanceof jwt.JsonWebTokenError) {
+      logger.warn('[Auth] JWT verification failed', { error: (error as Error).message });
+      next(AppError.unauthorized('Token verification failed'));
+      return;
+    }
+
+    next(error);
+  }
+}
+
+// Role-based access control guard factory
+export function requireRoles(...roles: string[]) {
+  return (req: AuthenticatedRequest, _res: Response, next: NextFunction): void => {
+    const userRoles = req.user?.realm_access?.roles ?? [];
+    const hasRole = roles.some((role) => userRoles.includes(role));
+
+    if (!hasRole) {
+      next(AppError.forbidden(`Access requires one of: ${roles.join(', ')}`));
+      return;
+    }
 
     next();
-  } catch (error: unknown) {
-    const err = error as Error;
-
-    logger.warn('Authentication failed', {
-      requestId: req.requestId,
-      error:     err.message,
-    });
-
-    if (err.name === 'TokenExpiredError') {
-      ResponseBuilder.unauthorized(res, 'Token has expired');
-      return;
-    }
-
-    if (err.name === 'JsonWebTokenError') {
-      ResponseBuilder.unauthorized(res, 'Invalid token');
-      return;
-    }
-
-    if (err.message.includes('Authorization service')) {
-      // AuthZ API is down — fail closed (deny by default)
-      ResponseBuilder.error(
-        res,
-        'Authorization service is temporarily unavailable',
-        StatusCodes.SERVICE_UNAVAILABLE,
-      );
-      return;
-    }
-
-    ResponseBuilder.error(res, 'Authentication failed', StatusCodes.INTERNAL_SERVER_ERROR);
-  }
-};
+  };
+}

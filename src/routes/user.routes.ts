@@ -1,45 +1,26 @@
 import { Router } from 'express';
-import { userController } from '@controllers/user.controller';
-import {
-    requirePermissions,
-    requireAnyPermission,
-    requireOwnerOrPermission,
-} from '@middleware/authorization.middleware';
-import { authenticate } from '@middleware/authentication.middleware';
-
-// ─────────────────────────────────────────────
-//  PERMISSION CONSTANTS
-//  Centralise permission strings — avoids magic strings in routes.
-// ─────────────────────────────────────────────
-
-const P = {
-    USERS_READ: 'users:read',
-    USERS_WRITE: 'users:write',
-    USERS_DELETE: 'users:delete',
-} as const;
-
-// ─────────────────────────────────────────────
-//  USER ROUTER
-//
-//  Middleware chain per route (left → right):
-//    authenticate → [authorization guard] → [validate] → controller
-//
-//  authenticate runs once at the router level.
-//  Authorization guards are applied individually per route
-//  so that different endpoints can demand different permissions.
-// ─────────────────────────────────────────────
+import { userController } from '../controllers/user.controller';
+import { authMiddleware } from '../middleware/authentication.middleware';
+import { authorize } from '@middleware/authorize.middleware';
 
 const router = Router();
 
-// All routes below this line require a valid Keycloak token
-// AND resolved permissions from the external AuthZ API.
-router.use(authenticate);
+// GET /users/me  — Requires authentication only (any authenticated user can access)
+router.get('/me', authMiddleware, authorize('admin'), userController.getMe.bind(userController));
 
-// ── GET /users — requires users:read ──
-router.get(
-    '/',
-    requirePermissions(P.USERS_READ),
-    userController.getAll,
-);
+// GET /users  — Requires authentication + admin role
+router.get('/', authMiddleware, userController.getAll.bind(userController));
+
+// GET /users/:id  — Requires authentication + admin or manager role
+router.get('/:id', authMiddleware, userController.getById.bind(userController));
+
+// POST /users  — Requires authentication + admin role
+router.post('/', authMiddleware, userController.create.bind(userController));
+
+// PATCH /users/:id  — Requires authentication + admin role
+router.patch('/:id', authMiddleware, userController.update.bind(userController));
+
+// DELETE /users/:id  — Requires authentication + admin role
+router.delete('/:id', authMiddleware, userController.remove.bind(userController));
 
 export default router;

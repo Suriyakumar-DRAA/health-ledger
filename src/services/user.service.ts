@@ -1,67 +1,64 @@
-import { StatusCodes } from 'http-status-codes';
-import { BaseService } from './base.service';
-import { userRepository, IUser } from '@models/user.model';
-import { cacheService } from '@utils/cache';
-import { permissionsClient } from '@config/permission';
-import { PaginatedResult, PaginationOptions, KeycloakTokenPayload } from '@customTypes/index';
+import { AppError } from '../utils/AppError';
+import { PaginationQuery } from '../types';
+import {
+  userRepository,
+  CreateUserDto,
+  UpdateUserDto,
+} from '../repositories/user.repository';
+import { IUser } from '../models/user.model';
+import logger from '../utils/logger';
 
-// ─────────────────────────────────────────────
-//  DTOs
-// ─────────────────────────────────────────────
-export interface CreateUserDto {
-  email:      string;
-  username:   string;
-  firstName:  string;
-  lastName:   string;
-  keycloakId: string;
+interface PaginatedUsers {
+  data: IUser[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
-export interface UpdateUserDto {
-  firstName?: string;
-  lastName?:  string;
-}
+export class UserService {
+  async getAllUsers(query: PaginationQuery): Promise<PaginatedUsers> {
+    const page = Math.max(1, query.page ?? 1);
+    const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+    const skip = (page - 1) * limit;
 
-// ─────────────────────────────────────────────
-//  CACHE KEY FACTORY
-// ─────────────────────────────────────────────
+    const { data, total } = await userRepository.findAll({}, skip, limit);
 
-const CK = {
-  byId:   (id: string)    => `user:id:${id}`,
-  byKcId: (id: string)    => `user:kc:${id}`,
-  list:   (p: number, l: number, s: string, o: string) => `users:list:${p}:${l}:${s}:${o}`,
-} as const;
-
-// ─────────────────────────────────────────────
-//  USER SERVICE
-// ─────────────────────────────────────────────
-
-class UserService extends BaseService {
-  constructor() {
-    super('UserService');
+    return {
+      data,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
-  async getAll(options: PaginationOptions): Promise<PaginatedResult<Partial<IUser>>> {
-    const { page, limit, sortBy = 'createdAt', sortOrder = 'desc' } = options;
-    const cacheKey = CK.list(page, limit, sortBy, sortOrder);
-
-    return cacheService.remember(cacheKey, 60, async () => {
-      const sort = { [sortBy]: sortOrder === 'asc' ? 1 : -1 } as Record<string, 1 | -1>;
-      // Projection: exclude internal fields from the API response
-      const projection: Record<string, 0 | 1> = { keycloakId: 0 };
-
-      const { data, total } = await userRepository.findAll({}, { page, limit, sort, projection });
-      return this.buildPaginatedResult(data, total, options);
-    });
-  }
-
-  async getById(id: string): Promise<Partial<IUser>> {
-    const user = await cacheService.remember(
-      CK.byId(id),
-      300,
-      () => userRepository.findById(id),
-    );
-    this.assertFound(user, 'User');
+  async getUserById(id: string): Promise<IUser> {
+    const user = await userRepository.findById(id);
+    if (!user) throw AppError.notFound('User');
     return user;
+  }
+
+  async createUser(dto: CreateUserDto): Promise<IUser> {
+    const existing = await userRepository.findByEmail(dto.email);
+    if (existing) throw AppError.conflict(`User with email ${dto.email} already exists`);
+
+    const user = await userRepository.create(dto);
+    logger.info('[UserService] User created', { userId: user._id.toString() });
+    return user;
+  }
+
+  async updateUser(id: string, dto: UpdateUserDto): Promise<IUser> {
+    const user = await userRepository.update(id, dto);
+    if (!user) throw AppError.notFound('User');
+    logger.info('[UserService] User updated', { userId: id });
+    return user;
+  }
+
+  async deleteUser(id: string): Promise<void> {
+    const deleted = await userRepository.delete(id);
+    if (!deleted) throw AppError.notFound('User');
+    logger.info('[UserService] User deleted', { userId: id });
   }
 }
 

@@ -2,97 +2,78 @@ import express, { Application } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
-import rateLimit from 'express-rate-limit';
-import { config } from '@config/index';
-import { requestId, httpLogger } from '@middleware/logger.middleware';
-import { performanceMiddleware } from '@middleware/performance.middleware';
-import { globalErrorHandler, notFoundHandler } from '@middleware/error.middleware';
-import router from '@routes/index';
+import morgan from 'morgan';
+import { env } from './config/env';
+import { requestTracerMiddleware } from './middleware/requestTracer.middleware';
+import { rateLimiterMiddleware } from './middleware/rateLimiter.middleware';
+import { globalErrorHandler, notFoundHandler } from './middleware/error.middleware';
+import logger from './utils/logger';
+import router from './routes';
 
-// ─────────────────────────────────────────────
-//  APP FACTORY
-//
-//  Middleware order is deliberate:
-//    ① Security headers — first, before any logic
-//    ② CORS — before body parsing so pre-flight OPTIONS is answered fast
-//    ③ Performance timer — attached immediately after security so it
-//       captures the full request lifecycle including body parsing
-//    ④ Request ID — needed by every subsequent middleware for tracing
-//    ⑤ Compression — before body parse so response can be compressed
-//    ⑥ Body parsing — only after security & tracing are in place
-//    ⑦ HTTP logger — after body parse so Content-Length is accurate
-//    ⑧ Rate limiter — after parsing, before routes
-//    ⑨ Routes
-//    ⑩ 404 + global error handler — always last
-// ─────────────────────────────────────────────
+export function createApp(): Application {
+  const app = express();
 
-export const createApp = (): Application => {
-    const app = express();
+  // ──────────────────────────────────────────
+  // Security headers
+  // ──────────────────────────────────────────
+  app.use(helmet());
 
-    // ① Security headers (helmet)
-    app.use(
-        helmet({
-            contentSecurityPolicy: config.app.isProd,    // off in dev for ease
-            crossOriginEmbedderPolicy: false,
-        }),
-    );
+  // ──────────────────────────────────────────
+  // CORS
+  // ──────────────────────────────────────────
+  app.use(
+    cors({
+      origin: env.isProduction ? process.env['ALLOWED_ORIGINS']?.split(',') : '*',
+      methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+      exposedHeaders: ['X-Request-Id'],
+      credentials: true,
+    }),
+  );
 
-    // ② CORS — answers OPTIONS pre-flight before any other work
-    app.use(
-        cors({
-            origin: config.app.allowedOrigins,
-            credentials: true,
-            methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
-            allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
-            exposedHeaders: ['X-Request-ID', 'X-Response-Time'],
-            maxAge: 86400,     // cache pre-flight for 24 h
-        }),
-    );
+  // ──────────────────────────────────────────
+  // Request tracing (attach X-Request-Id)
+  // ──────────────────────────────────────────
+  app.use(requestTracerMiddleware);
 
-    // ③ High-resolution performance timer
-    app.use(performanceMiddleware);
+  // ──────────────────────────────────────────
+  // Compression
+  // ──────────────────────────────────────────
+  app.use(compression());
 
-    // ④ Unique request ID for distributed tracing
-    app.use(requestId);
+  // ──────────────────────────────────────────
+  // Body parsers
+  // ──────────────────────────────────────────
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-    // ⑤ Response compression
-    app.use(
-        compression({
-            level: 6,
-            threshold: 1024,    // only compress responses > 1 KB
-        }),
-    );
+  // ──────────────────────────────────────────
+  // HTTP request logging (Morgan → Winston)
+  // ──────────────────────────────────────────
+  app.use(
+    morgan(env.isProduction ? 'combined' : 'dev', {
+      stream: {
+        write: (message: string) => logger.http(message.trim()),
+      },
+      skip: (_req, res) => env.isProduction && res.statusCode < 400,
+    }),
+  );
 
-    // ⑥ Body parsing with size guards
-    app.use(express.json({ limit: '1mb' }));
-    app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+  // ──────────────────────────────────────────
+  // Rate limiting
+  // ──────────────────────────────────────────
+  app.use(rateLimiterMiddleware);
 
-    // ⑦ HTTP request logger
-    app.use(httpLogger);
+  // ──────────────────────────────────────────
+  // Routes
+  // ──────────────────────────────────────────
+  app.use(env.server.apiPrefix, router);
 
-    // ⑧ Rate limiting — applied after parsing so we have req.ip
-    app.use(
-        rateLimit({
-            windowMs: config.rateLimit.windowMs,
-            max: config.rateLimit.maxRequests,
-            standardHeaders: true,
-            legacyHeaders: false,
-            keyGenerator: (req) => req.ip ?? 'unknown',
-            message: { success: false, message: 'Too many requests — try again later.' },
-        }),
-    );
+  // ──────────────────────────────────────────
+  // Error handling (must be last)
+  // ──────────────────────────────────────────
+  app.use(notFoundHandler);
+  app.use(globalErrorHandler);
 
-    // Trust X-Forwarded-For in production (behind nginx / ALB)
-    if (config.app.isProd) {
-        app.set('trust proxy', 1);
-    }
-
-    // ⑨ API routes
-    app.use(config.app.apiPrefix, router);
-
-    // ⑩ Fallbacks — always last
-    app.use(notFoundHandler);
-    app.use(globalErrorHandler);
-
-    return app;
-};
+  return app;
+}
