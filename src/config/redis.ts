@@ -1,6 +1,6 @@
 import { createClient, RedisClientType } from 'redis';
-import { env } from '../config/env';
-import logger from '../utils/logger';
+import { env } from '@config/env';
+import logger from '@utils/logger';
 
 class RedisDatabase {
   private static instance: RedisDatabase;

@@ -1,9 +1,7 @@
 import { Schema, model, Types } from 'mongoose';
-import { BaseDocument, baseSchemaFields, baseSchemaOptions } from './base.model';
+import { BaseDocument, baseSchemaFields, baseSchemaOptions } from '@models/base.model';
 
-// ──────────────────────────────────────────
 // Interface
-// ──────────────────────────────────────────
 export interface IUser extends BaseDocument {
   _id: Types.ObjectId;
   keycloakId: string;
@@ -13,9 +11,7 @@ export interface IUser extends BaseDocument {
   lastLoginAt?: Date;
 }
 
-// ──────────────────────────────────────────
 // Schema
-// ──────────────────────────────────────────
 const userSchema = new Schema<IUser>(
   {
     ...baseSchemaFields,

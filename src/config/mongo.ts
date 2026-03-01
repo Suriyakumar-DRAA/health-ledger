@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
-import { env } from '../config/env';
-import logger from '../utils/logger';
+import { env } from '@config/env';
+import logger from '@utils/logger';
 
 class MongoDatabase {
   private static instance: MongoDatabase;

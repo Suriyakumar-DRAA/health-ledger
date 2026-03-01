@@ -1,6 +1,6 @@
 import rateLimit from 'express-rate-limit';
-import { env } from '../config/env';
-import { ResponseBuilder } from '../utils/response';
+import { env } from '@config/env';
+import { ResponseBuilder } from '@utils/response';
 
 export const rateLimiterMiddleware = rateLimit({
   windowMs: env.rateLimit.windowMs,

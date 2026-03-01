@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { StatusCodes } from 'http-status-codes';
-import { AppError } from '../utils/AppError';
-import { ResponseBuilder } from '../utils/response';
-import logger from '../utils/logger';
+import { AppError } from '@utils/AppError';
+import { ResponseBuilder } from '@utils/response';
+import logger from '@utils/logger';
 
 // Catch-all 404 handler (must be after all routes)
 export function notFoundHandler(req: Request, res: Response): void {

@@ -1,7 +1,9 @@
-import { createApp } from './app';
-import { env } from './config/env';
-import { mongoDatabase, mysqlDatabase, redisDatabase } from './database';
-import logger from './utils/logger';
+import { createApp } from 'src/app';
+import { env } from '@config/env';
+import logger from '@utils/logger';
+import { mongoDatabase } from '@config/mongo';
+import { mysqlDatabase } from '@config/mysql';
+import { redisDatabase } from '@config/redis';
 
 async function bootstrap(): Promise<void> {
   try {
@@ -33,15 +35,11 @@ async function bootstrap(): Promise<void> {
       logger.error('[Server] ❌ Redis connection failed', { error: (error as Error).message });
       throw error;
     }
-
-    // ──────────────────────────────────────────
+    
     // Create Express app
-    // ──────────────────────────────────────────
     const app = createApp();
-
-    // ──────────────────────────────────────────
+    
     // Start HTTP server
-    // ──────────────────────────────────────────
     app.listen(env.server.port, () => {
       logger.info(`[Server] ✅ Listening on port ${env.server.port}`);
       logger.info(`[Server] API base: ${env.server.apiPrefix}`);

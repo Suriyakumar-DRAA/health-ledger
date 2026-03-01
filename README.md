@@ -218,6 +218,7 @@ Follow this pattern to add any new resource (e.g., `Patient`):
 | `KEYCLOAK_ISSUER` | **Yes** | — | Keycloak issuer URL |
 | `LOG_LEVEL` | No | `info` | Winston log level |
 | `RATE_LIMIT_MAX_REQUESTS` | No | `100` | Requests per window |
+| `CACHE_ROLES_TTL_SECONDS` | No | `86400` | User roles cache TTL (1 day) |
 
 ---
 

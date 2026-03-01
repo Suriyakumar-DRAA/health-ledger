@@ -1,11 +1,9 @@
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
-import { env } from '../config/env';
+import { env } from '@config/env';
 import * as rTracer from 'cls-rtracer';
 
-// ──────────────────────────────────────────
 // Custom log format with request-id injection
-// ──────────────────────────────────────────
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
   winston.format.errors({ stack: true }),
@@ -29,9 +27,7 @@ const jsonFormat = winston.format.combine(
   winston.format.json(),
 );
 
-// ──────────────────────────────────────────
 // Transports
-// ──────────────────────────────────────────
 const transports: winston.transport[] = [
   new winston.transports.Console({
     format: env.isProduction ? jsonFormat : winston.format.combine(

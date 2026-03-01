@@ -1,6 +1,6 @@
 import { FilterQuery, UpdateQuery } from 'mongoose';
-import { IUser, UserModel } from '../models/user.model';
-import logger from '../utils/logger';
+import { IUser, UserModel } from '@models/user.model';
+import logger from '@utils/logger';
 
 export interface CreateUserDto {
   keycloakId: string;

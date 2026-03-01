@@ -1,12 +1,12 @@
-import { AppError } from '../utils/AppError';
-import { PaginationQuery } from '../types';
+import { AppError } from '@utils/AppError';
+import { PaginationQuery } from 'src/types';
 import {
   userRepository,
   CreateUserDto,
   UpdateUserDto,
-} from '../repositories/user.repository';
-import { IUser } from '../models/user.model';
-import logger from '../utils/logger';
+} from '@repositories/user.repository';
+import { IUser } from '@models/user.model';
+import logger from '@utils/logger';
 
 interface PaginatedUsers {
   data: IUser[];

@@ -1,8 +1,6 @@
 import { Request } from 'express';
 
-// ──────────────────────────────────────────
 // API Response Envelope
-// ──────────────────────────────────────────
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -32,9 +30,7 @@ export interface PaginationQuery {
   sortOrder?: 'asc' | 'desc';
 }
 
-// ──────────────────────────────────────────
 // Authenticated Request
-// ──────────────────────────────────────────
 export interface JwtPayload {
   sub: string;
   email?: string;
@@ -52,9 +48,7 @@ export interface AuthenticatedRequest extends Request {
   requestId?: string;
 }
 
-// ──────────────────────────────────────────
 // Database
-// ──────────────────────────────────────────
 export interface DatabaseConfig {
   mongo: {
     uri: string;
@@ -77,7 +71,5 @@ export interface DatabaseConfig {
   };
 }
 
-// ──────────────────────────────────────────
 // Environment
-// ──────────────────────────────────────────
 export type Environment = 'development' | 'production' | 'test';

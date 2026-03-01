@@ -1,10 +1,11 @@
 import { Response, NextFunction, RequestHandler } from 'express';
 import { RowDataPacket } from 'mysql2';
-import { mysqlDatabase } from '../database/mysql';
-import { redisDatabase } from '../database/redis';
-import { AppError } from '../utils/AppError';
-import logger from '../utils/logger';
-import { AuthenticatedRequest } from '../types';
+import { mysqlDatabase } from '@config/mysql';
+import { redisDatabase } from '@config/redis';
+import { env } from '@config/env';
+import { AppError } from '@utils/AppError';
+import logger from '@utils/logger';
+import { AuthenticatedRequest } from 'src/types';
 
 
 interface UserRow extends RowDataPacket {
@@ -27,17 +28,10 @@ interface DbUser {
   isActive: boolean;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-const ROLES_CACHE_TTL_SECONDS = 3_600; // 1 hour
 const CACHE_KEY_PREFIX = 'user_roles:' as const;
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Parse the `roles` column which may arrive as a JSON string or a native array.
  * Always returns a clean `string[]` — never throws.
@@ -74,10 +68,7 @@ function mapRowToDbUser(row: UserRow): DbUser {
   };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // Cache helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Attempt to read cached roles from Redis.
  * Returns `null` on any cache miss or Redis error — never throws.
@@ -111,8 +102,8 @@ async function getCachedRoles(cacheKey: string): Promise<string[] | null> {
  */
 async function setCachedRoles(cacheKey: string, roles: string[]): Promise<void> {
   try {
-    await redisDatabase.set(cacheKey, JSON.stringify(roles), ROLES_CACHE_TTL_SECONDS);
-    logger.debug('[Authorize] Roles cached', { cacheKey, ttl: ROLES_CACHE_TTL_SECONDS });
+    await redisDatabase.set(cacheKey, JSON.stringify(roles), env.cache.rolesTtlSeconds);
+    logger.debug('[Authorize] Roles cached', { cacheKey, ttl: env.cache.rolesTtlSeconds });
   } catch (err) {
     logger.error('[Authorize] Redis SET error — roles NOT cached', {
       cacheKey,
@@ -121,10 +112,7 @@ async function setCachedRoles(cacheKey: string, roles: string[]): Promise<void> 
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 // DB lookup
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Fetch the user from MySQL by their preferred_username / email.
  * Throws `AppError.forbidden` when the user record does not exist.

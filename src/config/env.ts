@@ -1,6 +1,6 @@
 import path from 'path';
 import dotenv from 'dotenv';
-import { Environment } from '../types';
+import { Environment } from 'src/types';
 
 // Load the correct .env file based on NODE_ENV
 const envFile = '.env';
@@ -11,9 +11,7 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 // Fallback to plain .env if environment-specific file not found
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-// ──────────────────────────────────────────
 // Required env var guard
-// ──────────────────────────────────────────
 function requireEnv(key: string): string {
   const value = process.env[key];
   if (!value) {
@@ -31,9 +29,7 @@ function getEnvNumber(key: string, defaultValue: number): number {
   return value ? parseInt(value, 10) : defaultValue;
 }
 
-// ──────────────────────────────────────────
 // Validated & Typed Config Object
-// ──────────────────────────────────────────
 export const env = {
   nodeEnv: NODE_ENV,
   isDevelopment: NODE_ENV === 'development',
@@ -76,6 +72,10 @@ export const env = {
   rateLimit: {
     windowMs: getEnvNumber('RATE_LIMIT_WINDOW_MS', 60_000),
     maxRequests: getEnvNumber('RATE_LIMIT_MAX_REQUESTS', 100),
+  },
+
+  cache: {
+    rolesTtlSeconds: getEnvNumber('CACHE_ROLES_TTL_SECONDS', 86_400), // 1 day default
   },
 
   logging: {

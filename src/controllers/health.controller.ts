@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
-import { mongoDatabase, mysqlDatabase, redisDatabase } from '../database';
-import { ResponseBuilder } from '../utils/response';
-import { env } from '../config/env';
-import logger from './../utils/logger';
+import { mongoDatabase } from '@config/mongo';
+import { mysqlDatabase } from '@config/mysql';
+import { redisDatabase } from '@config/redis';
+import { ResponseBuilder } from '@utils/response';
+import { env } from '@config/env';
+import logger from '@utils/logger';
 
 export class HealthController {
   check(_req: Request, res: Response): void {

@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import * as rTracer from 'cls-rtracer';
-import { ApiResponse, PaginationMeta } from '../types';
+import { ApiResponse, PaginationMeta } from 'src/types';
 
 export class ResponseBuilder {
   static success<T>(

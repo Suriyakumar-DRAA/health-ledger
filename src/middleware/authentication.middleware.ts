@@ -1,10 +1,10 @@
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
-import { env } from '../config/env';
-import { AppError } from '../utils/AppError';
-import { AuthenticatedRequest, JwtPayload } from '../types';
-import logger from '../utils/logger';
+import { env } from '@config/env';
+import { AppError } from '@utils/AppError';
+import { AuthenticatedRequest, JwtPayload } from 'src/types';
+import logger from '@utils/logger';
 
 const client = jwksClient({
   jwksUri: env.auth.jwksUri,
