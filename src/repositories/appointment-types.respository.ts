@@ -13,9 +13,13 @@ export interface UpdateAppointmentTypeDto {
 
 // Projections — one constant per use case, never fetch more than needed
 export const APPT_TYPE_LIST_PROJECTION = {
-    label: 1, created_by: 1, updated_by: 1,
-    created_at: 1, updated_at: 1,
-} as const;
+    label: 1,
+    is_active: 1,
+    created_by: 1,
+    updated_by: 1,
+    created_at: 1,
+    updated_at: 1,
+};
 
 type AppointmentTypeDoc = IAppointmentType & Document;
 
@@ -26,7 +30,7 @@ export class AppointmentTypeRepository extends BaseRepository<
     UpdateAppointmentTypeDto
 > {
     constructor() {
-        super(AppointmentTypeModel as never, 'AppointmentType');
+        super(AppointmentTypeModel as never, 'mst_appointment_types');
     }
 
     // ── Find appointment type by ID ──────────────────────────────────────────────
@@ -39,22 +43,26 @@ export class AppointmentTypeRepository extends BaseRepository<
 
     // ── Find all appointment types ────────────────────────────────────────────────
     async findAllItems(): Promise<AppointmentTypeDoc[]> {
-        const result = await this.findAll(
-            {
-                filter: { is_active: true },
-                projection: APPT_TYPE_LIST_PROJECTION,
-                sort: { label: 1 },
-            }
-        );
-        return result;
+        return await this.findAll({
+            filter: { is_active: true },
+            projection: APPT_TYPE_LIST_PROJECTION,
+            limit: 100,
+        });
     }
-
     // ── Create a new appointment type ───────────────────────────────────────────────
     async createAppointmentType(
         data: CreateAppointmentTypeDto
     ): Promise<AppointmentTypeDoc> {
         const appointmentType = await this.create(data, '');
         return appointmentType;
+    }
+
+    // ── Update an appointment type ───────────────────────────────────────────────
+    async updateAppointmentType(
+        id: string,
+        data: UpdateAppointmentTypeDto
+    ): Promise<AppointmentTypeDoc | null> {
+        return await this.updateById(id, data, '');
     }
 }
 

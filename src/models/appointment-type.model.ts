@@ -20,4 +20,4 @@ const mstAppointmentTypeSchema = new Schema(
 export type IAppointmentType = InferSchemaType<typeof mstAppointmentTypeSchema>
     & { _id: Types.ObjectId };
 
-export const AppointmentTypeModel = model('MSTAppointmentType', mstAppointmentTypeSchema);
+export const AppointmentTypeModel = model('AppointmentType', mstAppointmentTypeSchema);

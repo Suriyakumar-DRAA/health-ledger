@@ -1,23 +1,13 @@
 import { Response, NextFunction } from 'express';
-import { userService } from '@services/user.service';
+import { appointmentTypeService } from '@services/appointment-types.service';
 import { ResponseBuilder } from '@utils/response';
 import { AuthenticatedRequest } from 'src/types';
 
-export class UserController {
-  async getAll(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+export class AppointmentTypesController {
+  async getAll(_req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { page, limit } = req.query as { page?: string; limit?: string };
-      const result = await userService.getAllUsers({
-        page: page ? parseInt(page, 10) : 1,
-        limit: limit ? parseInt(limit, 10) : 20,
-      });
-
-      ResponseBuilder.paginated(res, result.data, {
-        page: result.page,
-        limit: result.limit,
-        total: result.total,
-        totalPages: result.totalPages,
-      });
+      const result = await appointmentTypeService.getAllAppointmentTypes();
+      ResponseBuilder.success(res, result);
     } catch (err) {
       next(err);
     }
@@ -29,8 +19,8 @@ export class UserController {
       if (Array.isArray(id)) {
         id = id[0] ?? '';
       }
-      const user = await userService.getUserById(id);
-      ResponseBuilder.success(res, user);
+      const appointmentType = await appointmentTypeService.getAppointmentTypeById(id);
+      ResponseBuilder.success(res, appointmentType);
     } catch (err) {
       next(err);
     }
@@ -38,13 +28,12 @@ export class UserController {
 
   async create(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
     try {
-      const user = await userService.createUser(req.body as {
-        keycloakId: string;
-        email: string;
-        name: string;
-        roles?: string[];
-      });
-      ResponseBuilder.created(res, user, 'User created successfully');
+      const user = req.user;
+      if (!user) {
+        throw new Error('Authenticated user information is missing');
+      }
+      const appointmentType = await appointmentTypeService.createAppointmentType(req.body);
+      ResponseBuilder.created(res, appointmentType, 'Appointment Type created successfully');
     } catch (err) {
       next(err);
     }
@@ -56,42 +45,14 @@ export class UserController {
       if (Array.isArray(id)) {
         id = id[0] ?? '';
       }
-      const user = await userService.updateUser(id, req.body as {
-        name?: string;
-        roles?: string[];
-        isActive?: boolean;
+      const appointmentType = await appointmentTypeService.updateAppointmentType(id, req.body as {
+        label?: string;
       });
-      ResponseBuilder.success(res, user, 'User updated successfully');
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async remove(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      let id = req.params ? req.params['id'] : '';
-      if (Array.isArray(id)) {
-        id = id[0] ?? '';
-      }
-      await userService.deleteUser(id);
-      ResponseBuilder.noContent(res);
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async getMe(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
-    try {
-      ResponseBuilder.success(res, {
-        sub: req.user?.sub,
-        email: req.user?.email,
-        name: req.user?.name,
-        roles: req.user?.realm_access?.roles ?? [],
-      });
+      ResponseBuilder.success(res, appointmentType, 'Appointment Type updated successfully');
     } catch (err) {
       next(err);
     }
   }
 }
 
-export const userController = new UserController();
+export const appointmentTypesController = new AppointmentTypesController();

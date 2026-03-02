@@ -1,6 +1,7 @@
 import { Model, Document, FilterQuery, UpdateQuery, ProjectionType } from 'mongoose';
 import logger from '@utils/logger';
 import { AppError } from '@utils/AppError';
+import { env } from '@config/env';
 
 /**
  * CONTRACT: Every repository MUST implement this interface.
@@ -49,20 +50,6 @@ export interface PaginatedResult<T> {
   executionTimeMs?: number;             // measured per query for observability
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TCreate and TUpdate default to `never`.
-//
-// What this means in practice:
-//
-//   Read-only repo    → BaseRepository<IDoc>
-//   Create-only repo  → BaseRepository<IDoc, CreateDto>
-//   Full CRUD repo    → BaseRepository<IDoc, CreateDto, UpdateDto>
-//
-// When TCreate = never:
-//   calling create(dto: never) → TypeScript compile error — you literally cannot
-//   pass a value of type `never`. The method exists but is unreachable.
-//   No runtime guard needed — the type system blocks it.
-// ─────────────────────────────────────────────────────────────────────────────
 
 export abstract class BaseRepository<
   TDoc extends Document,
@@ -81,24 +68,31 @@ export abstract class BaseRepository<
   // ── READ — always available regardless of TCreate / TUpdate ───────────────
 
   async findById(id: string, projection?: ProjectionType<TDoc>): Promise<TDoc | null> {
+    this.logQuery('findById', { id, projection });
     return this.timed('findById', () =>
-      this.model.findById(id, projection).lean<TDoc>().exec(),
+      this.model.findById(id, projection).lean().exec() as Promise<TDoc | null>,
     );
   }
 
   async findOne(filter: FilterQuery<TDoc>, projection?: ProjectionType<TDoc>): Promise<TDoc | null> {
+    this.logQuery('findOne', { filter, projection });
     return this.timed('findOne', () =>
-      this.model.findOne(filter, projection).lean<TDoc>().exec(),
+      this.model.findOne(filter, projection).lean().exec() as Promise<TDoc | null>,
     );
   }
 
   async findAll(options: QueryOptions<TDoc>): Promise<Array<TDoc>> {
-    return this.timed('findAll', () =>
-      this.model.find(options.filter ?? {}, options.projection)
+    this.logQuery('findAll', { filter: options.filter, projection: options.projection, sort: options.sort, limit: options.limit ?? this.DEFAULT_LIMIT });
+    
+    return this.timed('findAll', async () => {
+      const result = await this.model.find(options.filter ?? {}, options.projection)
         .sort(options.sort ?? { _id: -1 })
         .limit(options.limit ?? this.DEFAULT_LIMIT)
-        .lean<TDoc[]>().exec(),
-    );
+        .lean()
+        .exec();
+      
+      return result as TDoc[];
+    });
   }
 
   async findAllWithPagination(options: QueryOptions<TDoc>): Promise<PaginatedResult<TDoc>> {
@@ -111,6 +105,8 @@ export abstract class BaseRepository<
       logger.warn(`[${this.collectionName}] findAllWithPagination called WITHOUT projection`, { filter });
     }
 
+    this.logQuery('findAllWithPagination', { filter, projection: options.projection, sort: options.sort, page, limit, skip });
+
     const start = Date.now();
     const [data, total] = await Promise.all([
       this.model
@@ -118,8 +114,8 @@ export abstract class BaseRepository<
         .sort(options.sort ?? { _id: -1 })
         .skip(skip)
         .limit(limit)
-        .lean<TDoc[]>()
-        .exec(),
+        .lean()
+        .exec() as Promise<TDoc[]>,
       this.model.countDocuments(filter).exec(),
     ]);
 
@@ -129,6 +125,7 @@ export abstract class BaseRepository<
   }
 
   async exists(filter: FilterQuery<TDoc>): Promise<boolean> {
+    this.logQuery('exists', { filter });
     return this.timed('exists', async () => {
       const count = await this.model.countDocuments(filter).limit(1).exec();
       return count > 0;
@@ -136,12 +133,14 @@ export abstract class BaseRepository<
   }
 
   async count(filter: FilterQuery<TDoc> = {}): Promise<number> {
+    this.logQuery('count', { filter });
     return this.timed('count', () => this.model.countDocuments(filter).exec());
   }
 
   // ── WRITE — only usable when TCreate / TUpdate are provided ───────────────
 
   async create(dto: TCreate, actorUsername: string): Promise<TDoc> {
+    this.logQuery('create', { dto, actorUsername });
     return this.timed('create', async () => {
       const doc = new this.model({ ...dto, created_by: actorUsername, updated_by: actorUsername });
       return doc.save() as unknown as TDoc;
@@ -150,15 +149,17 @@ export abstract class BaseRepository<
 
   async updateById(id: string, dto: TUpdate, actorUsername: string): Promise<TDoc | null> {
     const update: UpdateQuery<TDoc> = { $set: { ...dto, updated_by: actorUsername } };
+    this.logQuery('updateById', { id, update, actorUsername });
     return this.timed('updateById', () =>
       this.model
         .findByIdAndUpdate(id, update, { new: true, runValidators: true })
-        .lean<TDoc>()
-        .exec(),
+        .lean()
+        .exec() as Promise<TDoc | null>,
     );
   }
 
   async softDelete(id: string, actorUsername: string): Promise<boolean> {
+    this.logQuery('softDelete', { id, actorUsername });
     return this.timed('softDelete', async () => {
       const result = await this.model
         .findByIdAndUpdate(id, { $set: { is_active: false, updated_by: actorUsername } }, { new: true })
@@ -175,6 +176,7 @@ export abstract class BaseRepository<
   }
 
   async bulkInsert(docs: TCreate[], actorUsername: string): Promise<TDoc[]> {
+    this.logQuery('bulkInsert', { count: docs.length, actorUsername });
     return this.timed('bulkInsert', async () => {
       const enriched = docs.map((d) => ({ ...d, created_by: actorUsername, updated_by: actorUsername }));
       const result = await this.model.insertMany(enriched as object[], { ordered: false });
@@ -208,6 +210,14 @@ export abstract class BaseRepository<
       logger.warn(`[${this.collectionName}] SLOW QUERY: ${operation} took ${ms}ms`, meta);
     } else {
       logger.debug(`[${this.collectionName}] ${operation} → ${ms}ms`);
+    }
+  }
+
+  private logQuery(operation: string, params: Record<string, unknown>): void {
+    if (env.isDevelopment) {
+      console.log(`\n🔍 [MongoDB Query] ${this.collectionName}.${operation}`);
+      console.log('📋 Parameters:', JSON.stringify(params, null, 2));
+      console.log('─────────────────────────────────────────────────────\n');
     }
   }
 }

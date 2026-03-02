@@ -200,19 +200,15 @@ export function authorize(...requiredRoles: [string, ...string[]]): RequestHandl
       }
 
       // ── 4. Role check ───────────────────────────────────────────────────────
-      const missingRoles = requiredRoles.filter((role) => !userRoles!.includes(role));
-
-      if (missingRoles.length > 0) {
+      const isRoleExists = requiredRoles.some((role) => userRoles!.includes(role));
+      if (!isRoleExists) {
         logger.warn('[Authorize] Access denied — insufficient access', {
           email,
           required: requiredRoles,
-          missing: missingRoles,
           actual: userRoles,
         });
 
-        throw AppError.forbidden(
-          `Access denied: requires role${missingRoles.length > 1 ? 's' : ''} [${missingRoles.join(', ')}]`,
-        );
+        throw AppError.forbidden(`Access denied`);
       }
 
       // ── 5. Attach dbUser if we fetched it (cache hit = dbUser is undefined) ─
