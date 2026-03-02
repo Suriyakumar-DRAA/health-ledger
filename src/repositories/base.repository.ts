@@ -185,7 +185,6 @@ export abstract class BaseRepository<
   }
 
   // ── Internal helpers ──────────────────────────────────────────────────────
-
   protected async timed<T>(operation: string, fn: () => Promise<T>): Promise<T> {
     const start = Date.now();
     try {
@@ -215,9 +214,7 @@ export abstract class BaseRepository<
 
   private logQuery(operation: string, params: Record<string, unknown>): void {
     if (env.isDevelopment) {
-      console.log(`\n🔍 [MongoDB Query] ${this.collectionName}.${operation}`);
-      console.log('📋 Parameters:', JSON.stringify(params, null, 2));
-      console.log('─────────────────────────────────────────────────────\n');
+      logger.info(`[MongoDB Query] ${this.collectionName}.${operation}`, { params });
     }
   }
 }
